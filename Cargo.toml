@@ -1,0 +1,17 @@
+[package]
+name = "h3-compactfill"
+version = "0.1.0"
+edition = "2024"
+description = "H3 compacted polyfill"
+authors = ["Ben Burwood <ben.burwood@outlook.com>"]
+readme = "README.md"
+repository = "https://github.com/ben-burwood/h3-compactfill"
+license-file = "LICENCE"
+
+[dependencies]
+geo = "0.33"
+rstar = "0.12"
+h3o = { version = "0.11.0", features = ["geo"] }
+
+[profile.release]
+lto = true

@@ -1,0 +1,19 @@
+name: Publish to crates.io
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: cargo build
+
+      - run: cargo test
+
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: $S{{ secrets.CARGO_REGISTRY_TOKEN }}
