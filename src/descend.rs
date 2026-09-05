@@ -17,7 +17,7 @@ pub enum Descended {
 /// its only candidate parent is already known incomplete.
 ///
 /// Recursion depth is bounded by `target - cell.resolution() <= 15`.
-pub fn descend(
+pub fn descend_compact(
     cell: CellIndex,
     target: Resolution,
     classify_disk: &impl Fn(CellIndex, f64) -> CoarseClassification,
@@ -56,7 +56,7 @@ pub fn descend(
     let mut n = 0usize;
     let mut all = true;
     for child in cell.children(next) {
-        match descend(child, target, classify_disk, leaf_included, emit) {
+        match descend_compact(child, target, classify_disk, leaf_included, emit) {
             Descended::Included(c) => {
                 clean[n] = c;
                 n += 1;
@@ -75,5 +75,46 @@ pub fn descend(
             emit(c);
         }
         Descended::Pruned
+    }
+}
+
+/// Recursively fill `cell`'s subtree at the target resolution (non-compact).                                                      /// Emits every target-resolution cell that passes the containment test.
+pub fn descend(
+    cell: CellIndex,
+    target: Resolution,
+    classify_disk: &impl Fn(CellIndex, f64) -> CoarseClassification,
+    leaf_included: &impl Fn(CellIndex) -> bool,
+    emit: &mut impl FnMut(CellIndex),
+) {
+    if cell.resolution() == target {
+        // Leaf (Target Resolution)
+        //
+        // The Cell Bounding Disk need not contain any Children.
+        //
+        // `classify_disk` is a cheap pre-check
+        let included = match classify_disk(cell, TARGETRESOLUTION_DISK_MARGIN) {
+            CoarseClassification::Inside => true,
+            CoarseClassification::Outside => false,
+            CoarseClassification::Straddle => leaf_included(cell),
+        };
+        if included {
+            emit(cell);
+        }
+        return;
+    }
+
+    match classify_disk(cell, COARSE_DISK_MARGIN) {
+        CoarseClassification::Inside => {
+            for c in cell.children(target) {
+                emit(c);
+            }
+        } // uncompact
+        CoarseClassification::Outside => {}
+        CoarseClassification::Straddle => {
+            let next = cell.resolution().succ().unwrap_or(target);
+            for child in cell.children(next) {
+                descend(child, target, classify_disk, leaf_included, emit);
+            }
+        }
     }
 }

@@ -8,7 +8,7 @@ use crate::seed::{build_seeds, seed_resolution};
 mod disk;
 use crate::disk::{CoarseClassification, cell_disk};
 mod descend;
-use crate::descend::{Descended, descend};
+use crate::descend::{Descended, descend, descend_compact};
 mod compact_multiresolution;
 use crate::compact_multiresolution::compact_multiresolution;
 mod index;
@@ -16,10 +16,18 @@ use crate::index::PolygonIndex;
 mod tiler;
 use crate::tiler::cell_polygon;
 
+// Full FillKind mirrors standard implementation of `polygonToCells`
+// Compact FillKind Short-Circuits at Coarse Cells to efficiently produce the compacted output
+enum FillKind {
+    Compact,
+    Full,
+}
+
 pub fn compact_fill(
     polygons: MultiPolygon,
     resolution: Resolution,
     mode: ContainmentMode,
+    kind: FillKind,
 ) -> Vec<CellIndex> {
     // Polygon Handling
     let Some(normalised_polygons) = normalise_polygons(polygons) else {
@@ -82,22 +90,29 @@ pub fn compact_fill(
     };
 
     // Top-Down Search
-    // Each Seed Cell Descent streams its maximally-compacted cells into `out` the moment a sibling group is known incomplete,
+    // Each Seed Cell Descent streams its Cells into `out` the moment a sibling group is known incomplete,
     // and returns its root only if the whole subtree collapsed clean.
-    // The interior fine band never accumulates — the live frontier is a single root-to-leaf path.
-    let mut out: Vec<CellIndex> = Vec::new();
-    let mut roots: Vec<CellIndex> = Vec::new();
-    for seed in seeds {
-        // Push all returned cells to the output vec
-        match descend(seed, resolution, &classify_disk, &leaf_included, &mut |c| {
-            out.push(c)
-        }) {
-            Descended::Included(root) => roots.push(root),
-            Descended::Pruned => {}
+    let mut out = Vec::new();
+    match kind {
+        FillKind::Full => {
+            for seed in seeds {
+                descend(seed, resolution, &classify_disk, &leaf_included, &mut |c| {
+                    out.push(c)
+                });
+            }
+        }
+        FillKind::Compact => {
+            let mut roots = Vec::new();
+            for seed in seeds {
+                match descend_compact(seed, resolution, &classify_disk, &leaf_included, &mut |c| {
+                    out.push(c)
+                }) {
+                    Descended::Included(root) => roots.push(root),
+                    Descended::Pruned => {}
+                }
+            }
+            out.extend(compact_multiresolution(roots));
         }
     }
-
-    // Merge the SubTree Cells and Root Cells into an optimally Compact Set.
-    out.extend(compact_multiresolution(roots));
     out
 }
