@@ -18,7 +18,7 @@ use crate::tiler::cell_polygon;
 
 // Full FillKind mirrors standard implementation of `polygonToCells`
 // Compact FillKind Short-Circuits at Coarse Cells to efficiently produce the compacted output
-enum FillKind {
+pub enum FillKind {
     Compact,
     Full,
 }
@@ -38,6 +38,8 @@ pub fn compact_fill(
     let polygon_index = PolygonIndex::build(&normalised_polygons);
 
     // Seeding
+    // TODO - This relies on h3o Tiler so realistically can't be used if the intention is to superseed that implementation
+    // This is likely a fairly micro-optimisation and using the 122 Res0 Coarse Cells should work fine
     let bbox_area = multipolygon_bbox_area(&normalised_polygons);
     let seeds = build_seeds(&normalised_polygons, seed_resolution(bbox_area, resolution));
 

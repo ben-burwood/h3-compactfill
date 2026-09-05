@@ -6,15 +6,26 @@ The benefit of this algorithm is to bypass a 2-stage approach of polyfill + comp
 
 To credit up front, this builds upon the great work by Uber in building [H3](https://h3geo.org/) and the excellent Rust Crate [h3o](https://github.com/HydroniumLabs/h3o) which implements the Core API.
 
+## H3o Tiler
+
+Whilst the H3o Tiler implementation is great, this could end up superseeding that implementation as a free sideeffect by just controlling whether or not to short-circuit at coarse cells vs uncompacting to children.
+
+## Outstanding Work
+
+- Fix all lat/lon geometries at the poles and transmeridian
+- Investigate BBox (this seems to be how it's implemented in H3 C core) vs the current Boundary Disk (+ indexed R-Tree) for the coarse pruning
+- Tests
+- Benchmarks
+
 ## Algorithm
 
-The basis of this algorithm is a recursive top-down (descent) search (similar to Uber's H3 `polygonToCellsExperimental` Function). This is distinctly different from `polygonToCellsExperimental` as it short-circuits at coarse cells to produce the compact output.
+The basis of this algorithm is a recursive top-down (descent) search (very similar to Uber's H3 `polygonToCellsExperimental` Function). Where this deviates from `polygonToCellsExperimental` is that it can short-circuit at coarse cells to produce the compact output.
+
+### Cell Containment
 
 - Interior (fully-inside) Cells - short-circuit there and take these straight as the most compact output.
 - Exterior (fully-outside) Cells - pruned from the search.
 - Straddling - step to the next finest resolution and re-check all the children until the requested resolution is reached.
-
-### Cell Containment
 
 #### Bounding Disk
 
@@ -42,11 +53,3 @@ Instead of always starting with the 122 Resolution-0 Base Cells, a suitable star
 
 1. Calculate the finest resolution whose average Cell is still at least as large as the polygon's bounding box.
 2. Generate a Cell Covering of the Boundary at that Resolution - using h3o's `Tiler` (implements `polygon_to_cells`) in `Covers` Containment Mode, dilated by one grid-ring (`grid_disk(1)`).
-
-#### Compaction
-
-Compaction happens during the search
-
-### Coordinates
-
-Latitude-compensated space (longitude scaled by cos(lat₀) where lat₀ is the polygon centroid latitude) so Euclidean distances used for the disk test are near-isotropic.
