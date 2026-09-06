@@ -14,7 +14,7 @@ pub fn compact_multiresolution(cells: Vec<CellIndex>) -> Vec<CellIndex> {
     // Bucket by Resolution (index 0..=15)
     let mut by_res: [Vec<CellIndex>; 16] = Default::default();
     for cell in cells {
-        by_res[usize::from(u8::from(cell.resolution()))].push(cell);
+        by_res[usize::from(cell.resolution())].push(cell);
     }
 
     let mut result: Vec<CellIndex> = Vec::new();

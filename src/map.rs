@@ -1,27 +1,9 @@
 use geo::{BoundingRect, Centroid, Coord, MapCoords, MultiPolygon, Point};
 use h3o::{Boundary, CellIndex, LatLng};
 
-/// Utils
-
-/// Antimeridian Handing - Shifts negative Longitudes into a continuous [0, 360].
-fn longitude_map(lng: f64, transmeridian: bool) -> f64 {
-    return if transmeridian && lng < 0.0 {
-        lng + 360.0
-    } else {
-        lng
-    };
-}
-
-/// Longitude Compression by `k = cos(lat₀)`, which makes Euclidean distances isotropic.
-fn longitude_compression(lng: f64, lat0: f64) -> f64 {
-    return lng * lat0.to_radians().cos().max(1e-6);
-}
-
-/// CoordMap
-
 pub struct CoordMap {
     transmeridian: bool, // polygon crosses the antimeridian?
-    lat0: f64,           // latitude0 for cosine compression
+    lat0_cos: f64,       // cosine(latitude0) for latitude compression
 }
 
 impl CoordMap {
@@ -39,13 +21,27 @@ impl CoordMap {
 
         return Some(Self {
             transmeridian,
-            lat0,
+            lat0_cos: lat0.to_radians().cos().max(1e-6),
         });
+    }
+
+    /// Antimeridian Handing - Shifts negative Longitudes into a continuous [0, 360].
+    fn antimeridian_lng(&self, lng: f64) -> f64 {
+        if self.transmeridian && lng < 0.0 {
+            lng + 360.0
+        } else {
+            lng
+        }
+    }
+
+    /// Longitude Compression by `k = cos(lat₀)`, which makes Euclidean distances isotropic.
+    fn compress_lng(&self, lng: f64) -> f64 {
+        lng * self.lat0_cos
     }
 
     // normalise_cood provides meridian handling and latitude normalisation for a single coordinate
     fn normalise_coord(&self, lng: f64, lat: f64) -> Coord {
-        let nlng = longitude_compression(longitude_map(lng, self.transmeridian), self.lat0);
+        let nlng = self.compress_lng(self.antimeridian_lng(lng));
         Coord { x: nlng, y: lat }
     }
 
@@ -126,9 +122,30 @@ mod tests {
 
     #[test]
     fn longitude_map_shifts_only_when_transmeridian() {
-        assert_eq!(longitude_map(-179.0, false), -179.0);
-        assert_eq!(longitude_map(-179.0, true), 181.0);
-        assert_eq!(longitude_map(10.0, true), 10.0); // positive lng untouched
+        assert_eq!(
+            CoordMap {
+                transmeridian: false,
+                lat0_cos: 0.0
+            }
+            .antimeridian_lng(-179.0),
+            -179.0
+        );
+        assert_eq!(
+            CoordMap {
+                transmeridian: true,
+                lat0_cos: 0.0
+            }
+            .antimeridian_lng(-179.0),
+            181.0
+        );
+        assert_eq!(
+            CoordMap {
+                transmeridian: true,
+                lat0_cos: 0.0
+            }
+            .antimeridian_lng(10.0),
+            10.0
+        ); // positive lng untouched
     }
 
     #[test]
