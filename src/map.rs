@@ -20,8 +20,8 @@ fn longitude_compression(lng: f64, lat0: f64) -> f64 {
 /// CoordMap
 
 pub struct CoordMap {
-    transmeridian: bool,
-    lat0_cos: f64,
+    transmeridian: bool, // polygon crosses the antimeridian?
+    lat0: f64,           // latitude0 for cosine compression
 }
 
 impl CoordMap {
@@ -39,13 +39,13 @@ impl CoordMap {
 
         return Some(Self {
             transmeridian,
-            lat0_cos: lat0,
+            lat0,
         });
     }
 
     // normalise_cood provides meridian handling and latitude normalisation for a single coordinate
     fn normalise_coord(&self, lng: f64, lat: f64) -> Coord {
-        let nlng = longitude_compression(longitude_map(lng, self.transmeridian), self.lat0_cos);
+        let nlng = longitude_compression(longitude_map(lng, self.transmeridian), self.lat0);
         Coord { x: nlng, y: lat }
     }
 
@@ -56,6 +56,7 @@ impl CoordMap {
 
     fn normalise_latlng(&self, lng: f64, lat: f64) -> LatLng {
         let coord = self.normalise_coord(lng, lat);
+        // TODO - Check the safety of this - might panic transmeridian
         LatLng::new(coord.y, coord.x).expect("LatLng coordinate out of bounds")
     }
 
