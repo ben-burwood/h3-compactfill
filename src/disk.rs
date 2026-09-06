@@ -28,6 +28,7 @@ pub struct Disk {
 /// Bounding Disk of `cell`: the cell centre and `margin ×` the greatest centre→vertex Distance
 pub fn cell_disk(cell: CellIndex, margin: f64, coord_map: &CoordMap) -> Disk {
     let centre = coord_map.cellindex_centroid_point(cell);
+    // TODO - This could just use a precomputed circumradius table instead of the `cell.boundary()` call
     let max_r2 = coord_map
         .cellindex_boundary(cell)
         .iter()
