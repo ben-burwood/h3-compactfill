@@ -1,5 +1,5 @@
 use geo::{BoundingRect, Centroid, Coord, MapCoords, MultiPolygon, Point};
-use h3o::{Boundary, CellIndex, LatLng};
+use h3o::{CellIndex, LatLng};
 
 pub struct CoordMap {
     transmeridian: bool, // polygon crosses the antimeridian?
@@ -50,23 +50,17 @@ impl CoordMap {
         Point::new(coord.x, coord.y)
     }
 
-    fn normalise_latlng(&self, lng: f64, lat: f64) -> LatLng {
-        let coord = self.normalise_coord(lng, lat);
-        // TODO - Check the safety of this - might panic transmeridian
-        LatLng::new(coord.y, coord.x).expect("LatLng coordinate out of bounds")
-    }
-
     pub fn cellindex_centroid_point(&self, cell: CellIndex) -> Point {
         let c = LatLng::from(cell);
         self.normalise_point(c.lng(), c.lat())
     }
 
-    pub fn cellindex_boundary(&self, cell: CellIndex) -> Boundary {
-        let mut boundary = Boundary::new();
-        for ll in cell.boundary().iter() {
-            boundary.push(self.normalise_latlng(ll.lng(), ll.lat()));
-        }
-        boundary
+    /// Cell Boundary as Vertices of normalised Coords
+    pub fn cellindex_boundary_ring(&self, cell: CellIndex) -> Vec<Coord> {
+        cell.boundary()
+            .iter()
+            .map(|ll| self.normalise_coord(ll.lng(), ll.lat()))
+            .collect()
     }
 
     /// normalise_polygons provides meridian handling and latitude normalisation for multipolygon

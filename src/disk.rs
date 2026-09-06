@@ -30,9 +30,9 @@ pub fn cell_disk(cell: CellIndex, margin: f64, coord_map: &CoordMap) -> Disk {
     let centre = coord_map.cellindex_centroid_point(cell);
     // TODO - This could just use a precomputed circumradius table instead of the `cell.boundary()` call
     let max_r2 = coord_map
-        .cellindex_boundary(cell)
+        .cellindex_boundary_ring(cell)
         .iter()
-        .map(|ll| ((ll.lng()) - centre.x()).powi(2) + (ll.lat() - centre.y()).powi(2))
+        .map(|c| (c.x - centre.x()).powi(2) + (c.y - centre.y()).powi(2))
         .fold(0.0_f64, f64::max);
 
     Disk {
