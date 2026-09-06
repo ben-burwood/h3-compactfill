@@ -1,8 +1,8 @@
-use geo::{MultiPolygon, Point, PreparedGeometry, Relate};
-use h3o::{CellIndex, LatLng, Resolution, geom::ContainmentMode};
+use geo::{MultiPolygon, PreparedGeometry, Relate};
+use h3o::{CellIndex, Resolution, geom::ContainmentMode};
 
 mod map;
-use crate::map::{multipolygon_bbox_area, normalise_polygons};
+use crate::map::{CoordMap, multipolygon_bbox_area};
 mod seed;
 use crate::seed::{build_seeds, seed_resolution};
 mod disk;
@@ -29,10 +29,11 @@ pub fn compact_fill(
     mode: ContainmentMode,
     kind: FillKind,
 ) -> Vec<CellIndex> {
-    // Polygon Handling
-    let Some(normalised_polygons) = normalise_polygons(polygons) else {
-        return Vec::new(); // Empty geometry
+    let Some(coord_map) = CoordMap::from_polygons(&polygons) else {
+        return Vec::new();
     };
+
+    let normalised_polygons = coord_map.normalise_polygons(polygons);
 
     let prepared_geometry = PreparedGeometry::from(&normalised_polygons);
     let polygon_index = PolygonIndex::build(&normalised_polygons);
@@ -49,8 +50,7 @@ pub fn compact_fill(
     // Define a closure over the R-Tree of Edges
     // TODO - Investigate a BBOX for this like Uber H3 Reference Implementation
     let classify_disk = |cell: CellIndex, margin: f64| -> CoarseClassification {
-        // TODO - Handle map normalisation of cell coordinates
-        let disk = cell_disk(cell, margin);
+        let disk = cell_disk(cell, margin, &coord_map);
         if polygon_index.nearest_distance(disk.centre) <= disk.radius {
             // The shortest distance between the Polygon Boundary and the Disk Centre is less than the Disk's Radius
             // Hence the Disk and Polygon Boundary Cross
@@ -71,16 +71,12 @@ pub fn compact_fill(
         match mode {
             // Centroid Mode is just Point-in-Polygon
             ContainmentMode::ContainsCentroid => {
-                let ll = LatLng::from(cell);
-                // TODO - Handle map normalisation of cell coordinates
-                prepared_geometry
-                    .relate(&Point::new(ll.lng(), ll.lat()))
-                    .is_contains()
+                let centre = &coord_map.cellindex_centroid_point(cell);
+                prepared_geometry.relate(centre).is_contains()
             }
             // Other ContainmentModes need the Cell's exact DE-9IM against the Polygon
             _ => {
-                // TODO - Handle map normalisation of cell coordinates
-                let im = prepared_geometry.relate(&cell_polygon(cell));
+                let im = prepared_geometry.relate(&cell_polygon(cell, &coord_map));
                 match mode {
                     // ContainsBoundary must be Fully Contained
                     ContainmentMode::ContainsBoundary => im.is_covers(),

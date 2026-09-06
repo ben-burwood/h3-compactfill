@@ -1,5 +1,6 @@
+use crate::map::CoordMap;
 use geo::Point;
-use h3o::{CellIndex, LatLng};
+use h3o::CellIndex;
 
 /// Scalar on a Cells Circumradius to generate the Bounding Disk.
 ///
@@ -25,11 +26,10 @@ pub struct Disk {
 }
 
 /// Bounding Disk of `cell`: the cell centre and `margin ×` the greatest centre→vertex Distance
-pub fn cell_disk(cell: CellIndex, margin: f64) -> Disk {
-    let c = LatLng::from(cell);
-    let centre = Point::new(c.lng(), c.lat());
-    let max_r2 = cell
-        .boundary()
+pub fn cell_disk(cell: CellIndex, margin: f64, coord_map: &CoordMap) -> Disk {
+    let centre = coord_map.cellindex_centroid_point(cell);
+    let max_r2 = coord_map
+        .cellindex_boundary(cell)
         .iter()
         .map(|ll| ((ll.lng()) - centre.x()).powi(2) + (ll.lat() - centre.y()).powi(2))
         .fold(0.0_f64, f64::max);
