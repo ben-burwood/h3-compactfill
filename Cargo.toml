@@ -13,5 +13,12 @@ geo = "0.33"
 rstar = "0.12"
 h3o = { version = "0.11.0", features = ["geo"] }
 
+[dev-dependencies]
+peak_alloc = "0.3"
+
+[[bench]]
+name = "fill"
+harness = false
+
 [profile.release]
 lto = true
