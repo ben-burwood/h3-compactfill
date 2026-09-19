@@ -2,11 +2,13 @@ use geo::{MultiPolygon, PreparedGeometry, Relate};
 use h3o::{CellIndex, Resolution, geom::ContainmentMode};
 
 mod map;
-use crate::map::{CoordMap, multipolygon_bbox_area};
-mod seed;
-use crate::seed::{build_seeds, seed_resolution};
+use crate::map::CoordMap;
+mod bbox;
+use crate::bbox::{CHILD_BBOX_SCALE, cell_bbox};
+mod coarse;
+use crate::coarse::{CoarseClassification, HANDOFF_RES};
 mod disk;
-use crate::disk::{CoarseClassification, cell_disk};
+use crate::disk::cell_disk;
 mod descend;
 use crate::descend::{Descended, descend, descend_compact};
 mod compact_multiresolution;
@@ -33,23 +35,26 @@ pub fn compact_fill(
         return Vec::new();
     };
 
+    let poly_bbox = coord_map.polygon_ll_bbox(&polygons);
+
     let normalised_polygons = coord_map.normalise_polygons(polygons);
 
     let prepared_geometry = PreparedGeometry::from(&normalised_polygons);
     let polygon_index = PolygonIndex::build(&normalised_polygons);
 
-    // Seeding
-    // TODO - This relies on h3o Tiler so realistically can't be used if the intention is to superseed that implementation
-    // This is likely a fairly micro-optimisation and using the 122 Res0 Coarse Cells should work fine
-    let bbox_area = multipolygon_bbox_area(&normalised_polygons);
-    let seeds = build_seeds(&normalised_polygons, seed_resolution(bbox_area, resolution));
-
-    // Containment Tests - `classify_disk` (R-Tree test) is quicker than the `leaf_included` (relate or pip) Test
-
-    // Coarse Cell Test with Bounding Disk
-    // Define a closure over the R-Tree of Edges
-    // TODO - Investigate a BBOX for this like Uber H3 Reference Implementation
-    let classify_disk = |cell: CellIndex, margin: f64| -> CoarseClassification {
+    // Containment Tests - the coarse `classify` test is quicker than the `leaf_included` (relate or pip) Test.
+    //
+    // Coarse Classifiers:
+    // - Ultra-coarse cells (res < HANDOFF_RES) use BBox and only prunes (Outside) or subdivides (Straddle).
+    // - Finer cells use a Bounding Disk over the R-Tree of edges - resolves Inside and drives compaction.
+    let classify = |cell: CellIndex, margin: f64| -> CoarseClassification {
+        if usize::from(cell.resolution()) < HANDOFF_RES {
+            return if cell_bbox(cell, CHILD_BBOX_SCALE).overlaps(&poly_bbox) {
+                CoarseClassification::Straddle
+            } else {
+                CoarseClassification::Outside
+            };
+        }
         let disk = cell_disk(cell, margin, &coord_map);
         if polygon_index.nearest_distance(disk.centre) <= disk.radius {
             // The shortest distance between the Polygon Boundary and the Disk Centre is less than the Disk's Radius
@@ -87,22 +92,23 @@ pub fn compact_fill(
         }
     };
 
-    // Top-Down Search
-    // Each Seed Cell Descent streams its Cells into `out` the moment a sibling group is known incomplete,
-    // and returns its root only if the whole subtree collapsed clean.
+    // Top-Down Search from the 122 Res0 Base Cells.
+    //
+    // Each base-cell descent streams its Cells into `out` the moment a sibling group is known
+    // incomplete, and returns its root only if the whole subtree collapsed clean.
     let mut out = Vec::new();
     match kind {
         FillKind::Full => {
-            for seed in seeds {
-                descend(seed, resolution, &classify_disk, &leaf_included, &mut |c| {
+            for root in CellIndex::base_cells() {
+                descend(root, resolution, &classify, &leaf_included, &mut |c| {
                     out.push(c)
                 });
             }
         }
         FillKind::Compact => {
             let mut roots = Vec::new();
-            for seed in seeds {
-                match descend_compact(seed, resolution, &classify_disk, &leaf_included, &mut |c| {
+            for root in CellIndex::base_cells() {
+                match descend_compact(root, resolution, &classify, &leaf_included, &mut |c| {
                     out.push(c)
                 }) {
                     Descended::Included(root) => roots.push(root),

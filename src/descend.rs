@@ -1,6 +1,7 @@
 use h3o::{CellIndex, Resolution};
 
-use crate::disk::{COARSE_DISK_MARGIN, CoarseClassification, TARGETRESOLUTION_DISK_MARGIN};
+use crate::CoarseClassification;
+use crate::disk::{COARSE_DISK_MARGIN, TARGETRESOLUTION_DISK_MARGIN};
 
 /// Descended provides the outcome of descending into a Cell's subtree.
 pub enum Descended {
@@ -20,7 +21,7 @@ pub enum Descended {
 pub fn descend_compact(
     cell: CellIndex,
     target: Resolution,
-    classify_disk: &impl Fn(CellIndex, f64) -> CoarseClassification,
+    classify: &impl Fn(CellIndex, f64) -> CoarseClassification,
     leaf_included: &impl Fn(CellIndex) -> bool,
     emit: &mut impl FnMut(CellIndex),
 ) -> Descended {
@@ -29,8 +30,8 @@ pub fn descend_compact(
         //
         // The Cell Bounding Disk need not contain any Children.
         //
-        // `classify_disk` is a cheap pre-check
-        let included = match classify_disk(cell, TARGETRESOLUTION_DISK_MARGIN) {
+        // `classify` is a cheap pre-check
+        let included = match classify(cell, TARGETRESOLUTION_DISK_MARGIN) {
             CoarseClassification::Inside => true,
             CoarseClassification::Outside => false,
             CoarseClassification::Straddle => leaf_included(cell),
@@ -43,7 +44,7 @@ pub fn descend_compact(
     }
 
     // Cheap pre-check
-    match classify_disk(cell, COARSE_DISK_MARGIN) {
+    match classify(cell, COARSE_DISK_MARGIN) {
         CoarseClassification::Inside => return Descended::Included(cell),
         CoarseClassification::Outside => return Descended::Pruned,
         CoarseClassification::Straddle => {} // no-op
@@ -56,7 +57,7 @@ pub fn descend_compact(
     let mut n = 0usize;
     let mut all = true;
     for child in cell.children(next) {
-        match descend_compact(child, target, classify_disk, leaf_included, emit) {
+        match descend_compact(child, target, classify, leaf_included, emit) {
             Descended::Included(c) => {
                 clean[n] = c;
                 n += 1;
@@ -82,7 +83,7 @@ pub fn descend_compact(
 pub fn descend(
     cell: CellIndex,
     target: Resolution,
-    classify_disk: &impl Fn(CellIndex, f64) -> CoarseClassification,
+    classify: &impl Fn(CellIndex, f64) -> CoarseClassification,
     leaf_included: &impl Fn(CellIndex) -> bool,
     emit: &mut impl FnMut(CellIndex),
 ) {
@@ -91,8 +92,8 @@ pub fn descend(
         //
         // The Cell Bounding Disk need not contain any Children.
         //
-        // `classify_disk` is a cheap pre-check
-        let included = match classify_disk(cell, TARGETRESOLUTION_DISK_MARGIN) {
+        // `classify` is a cheap pre-check
+        let included = match classify(cell, TARGETRESOLUTION_DISK_MARGIN) {
             CoarseClassification::Inside => true,
             CoarseClassification::Outside => false,
             CoarseClassification::Straddle => leaf_included(cell),
@@ -103,7 +104,7 @@ pub fn descend(
         return;
     }
 
-    match classify_disk(cell, COARSE_DISK_MARGIN) {
+    match classify(cell, COARSE_DISK_MARGIN) {
         CoarseClassification::Inside => {
             for c in cell.children(target) {
                 emit(c);
@@ -113,7 +114,7 @@ pub fn descend(
         CoarseClassification::Straddle => {
             let next = cell.resolution().succ().unwrap_or(target);
             for child in cell.children(next) {
-                descend(child, target, classify_disk, leaf_included, emit);
+                descend(child, target, classify, leaf_included, emit);
             }
         }
     }

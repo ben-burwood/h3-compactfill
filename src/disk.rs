@@ -4,20 +4,13 @@ use h3o::CellIndex;
 
 /// Scalar on a Cells Circumradius to generate the Bounding Disk.
 ///
-/// This includes a fair amount of buffer but gurantees that ALL of a
+/// This includes a fair amount of buffer but guarantees that ALL of a
 /// coarse Cell's Children fallwithin the Disk
 pub const COARSE_DISK_MARGIN: f64 = 1.2;
 
 /// Reduced margin for the target resolution check as we no longer care to include Children
 /// Feasibly this can be anything >1 to ensure a decisive In/Out Check
 pub const TARGETRESOLUTION_DISK_MARGIN: f64 = 1.02;
-
-/// Bounding Disk Classification of a coarse Cell against the Polygon
-pub enum CoarseClassification {
-    Inside,
-    Outside,
-    Straddle,
-}
 
 /// Cell Bounding Disk
 pub struct Disk {

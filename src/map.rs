@@ -1,6 +1,8 @@
 use geo::{BoundingRect, Centroid, Coord, MapCoords, MultiPolygon, Point};
 use h3o::{CellIndex, LatLng};
 
+use crate::bbox::LlBBox;
+
 pub struct CoordMap {
     transmeridian: bool, // polygon crosses the antimeridian?
     lat0_cos: f64,       // cosine(latitude0) for latitude compression
@@ -67,14 +69,35 @@ impl CoordMap {
     pub fn normalise_polygons(&self, polygons: MultiPolygon) -> MultiPolygon {
         return polygons.map_coords(|c| self.normalise_coord(c.x, c.y));
     }
-}
 
-/// Rough bounding-box area in km²
-pub fn multipolygon_bbox_area(polygons: &MultiPolygon) -> f64 {
-    let mbox = polygons.bounding_rect().expect("non-empty geometry");
-    let width_km = (mbox.max().x - mbox.min().x) * 111.320;
-    let height_km = (mbox.max().y - mbox.min().y) * 110.574;
-    return (width_km * height_km).max(f64::MIN_POSITIVE);
+    /// Polygon's Bounding Box
+    ///
+    /// In **raw degrees** (no `cos(lat0)` compression)
+    /// Antimeridian shift is applied so a transmeridian polygon is encoded like H3 with `east < west`
+    ///
+    /// Must be called on the polygons *before* `normalise_polygons`.
+    pub fn polygon_ll_bbox(&self, polygons: &MultiPolygon) -> LlBBox {
+        let mut south = f64::INFINITY;
+        let mut north = f64::NEG_INFINITY;
+        let mut lo = f64::INFINITY;
+        let mut hi = f64::NEG_INFINITY;
+        for poly in polygons {
+            for c in poly.exterior().0.iter() {
+                let lng = self.antimeridian_lng(c.x);
+                south = south.min(c.y);
+                north = north.max(c.y);
+                lo = lo.min(lng);
+                hi = hi.max(lng);
+            }
+        }
+        let wrap = |l: f64| if l > 180.0 { l - 360.0 } else { l };
+        LlBBox {
+            south,
+            north,
+            west: wrap(lo),
+            east: wrap(hi),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -171,15 +194,6 @@ mod tests {
             b.max().x > 180.0,
             "max lng {} should exceed 180 after shift",
             b.max().x
-        );
-    }
-
-    #[test]
-    fn bbox_area_of_unit_box_is_about_12000_km2() {
-        let area = multipolygon_bbox_area(&rect(0.0, 0.0, 1.0, 1.0));
-        assert!(
-            (12_000.0..12_500.0).contains(&area),
-            "unexpected area {area}"
         );
     }
 }
