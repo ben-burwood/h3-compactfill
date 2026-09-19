@@ -1,7 +1,7 @@
 //! R-Tree of the Polygon's Edge Segments
 //!
 //! Required for Coarse Containment:
-//! - the distance from the cell's centroid to the nearest polygon edge (vs the cell's disk radius)
+//! - whether any polygon edge falls within the cell's axis-aligned bounding box
 //! - whether the centre is inside the polygon
 //!
 //! Doing both against the raw ring lists is `O(edges)` per Cell
@@ -14,7 +14,7 @@ use rstar::primitives::Line;
 use rstar::{AABB, RTree};
 
 /// Polygon Edge; `rstar`'s [`Line`]
-/// Provides `RTreeObject` + `PointDistance` (nearest-neighbour distance), plus `from`/`to` for the Ray Cast.
+/// Provides `RTreeObject` (envelope for the AABB query), plus `from`/`to` for the Ray Cast.
 type Edge = Line<[f64; 2]>;
 
 /// R-tree over every Edge of a [`MultiPolygon`], exterior and holes.

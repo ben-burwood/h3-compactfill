@@ -13,7 +13,6 @@ Whilst the H3o Tiler implementation is great, this could end up superseeding tha
 ## Outstanding Work
 
 - Fix all lat/lon geometries at the poles and transmeridian
-- Investigate BBox (this seems to be how it's implemented in H3 C core) vs the current Boundary Disk (+ indexed R-Tree) for the coarse pruning
 - Tests
 - Benchmarks
 
@@ -27,9 +26,9 @@ The basis of this algorithm is a recursive top-down (descent) search (very simil
 - Exterior (fully-outside) Cells - pruned from the search.
 - Straddling - step to the next finest resolution and re-check all the children until the requested resolution is reached.
 
-#### Bounding Disk
+#### Bounding Box
 
-To assess Cell Containment, we use a Bounding Disk and not the Cell's Polygon. This is because H3 Cells don't directly nest children into parents, so instead we use an approximated disk of radius `1.2 (arbitrary scalar) × circumradius` about the centroid to ensure that the representation contains the cell and *every* one of it's children.
+To assess Cell Containment, we use a Bounding Box and not the Cell's Polygon. This is because H3 Cells don't directly nest children into parents, so instead we use an approximated bbox `(arbitrary scalar) × distance` about the centroid to ensure that the representation contains the cell and *every* one of it's children.
 
 The Containment Algorithm is an R-Tree (`O(log edges)`) of the Polygon Edges: a nearest-neighbour query for the distance, and a +x ray cast for inside/outside.
 
@@ -44,12 +43,3 @@ For Leaf Cells (Cells at the target Resolution), the exact Hexagon is used (chil
 | `IntersectsBoundary` / `Covers` | the polygon **intersects** the cell (any overlap) |
 
 Only straddling (Intersecting) Cells are checked with the same DE-9IM `geo::relate` predicate as h3o's `Tiler`.
-
-### Optimisations
-
-#### Seeding
-
-Instead of always starting with the 122 Resolution-0 Base Cells, a suitable starting point is chosen based on the given Polygon's size.
-
-1. Calculate the finest resolution whose average Cell is still at least as large as the polygon's bounding box.
-2. Generate a Cell Covering of the Boundary at that Resolution - using h3o's `Tiler` (implements `polygon_to_cells`) in `Covers` Containment Mode, dilated by one grid-ring (`grid_disk(1)`).

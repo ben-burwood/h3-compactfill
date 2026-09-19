@@ -5,7 +5,7 @@ use crate::coarse::{COARSE_SCALE, TARGET_SCALE};
 
 /// Descended provides the outcome of descending into a Cell's subtree.
 pub enum Descended {
-    /// Either disk-accepted whole, or every child came back clean.
+    /// Either classified `Inside` whole, or every child came back clean.
     Included(CellIndex),
     Pruned,
 }
@@ -27,8 +27,6 @@ pub fn descend_compact(
 ) -> Descended {
     if cell.resolution() == target {
         // Leaf (Target Resolution)
-        //
-        // The Cell Bounding Disk need not contain any Children.
         //
         // `classify` is a cheap pre-check
         let included = match classify(cell, TARGET_SCALE) {
@@ -89,8 +87,6 @@ pub fn descend(
 ) {
     if cell.resolution() == target {
         // Leaf (Target Resolution)
-        //
-        // The Cell Bounding Disk need not contain any Children.
         //
         // `classify` is a cheap pre-check
         let included = match classify(cell, TARGET_SCALE) {
