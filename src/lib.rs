@@ -4,11 +4,9 @@ use h3o::{CellIndex, Resolution, geom::ContainmentMode};
 mod map;
 use crate::map::CoordMap;
 mod bbox;
-use crate::bbox::{CHILD_BBOX_SCALE, cell_bbox};
+use crate::bbox::cell_bbox;
 mod coarse;
 use crate::coarse::{CoarseClassification, HANDOFF_RES};
-mod disk;
-use crate::disk::cell_disk;
 mod descend;
 use crate::descend::{Descended, descend, descend_compact};
 mod compact_multiresolution;
@@ -44,25 +42,29 @@ pub fn compact_fill(
 
     // Containment Tests - the coarse `classify` test is quicker than the `leaf_included` (relate or pip) Test.
     //
-    // Coarse Classifiers:
-    // - Ultra-coarse cells (res < HANDOFF_RES) use BBox and only prunes (Outside) or subdivides (Straddle).
-    // - Finer cells use a Bounding Disk over the R-Tree of edges - resolves Inside and drives compaction.
-    let classify = |cell: CellIndex, margin: f64| -> CoarseClassification {
+    // - Ultra-coarse cells (res < HANDOFF_RES) - raw-degrees BBox (seam/pole aware) and only
+    //   prune (Outside) or subdivide (Straddle).
+    // - Finer cells - axis-aligned Box in the normalised frame over the R-Tree of edges.
+    //   If no edge touches the box the cell is wholly in/out (resolved by point-in-polygon,
+    //   which drives Inside + compaction); otherwise it Straddles.
+    let classify = |cell: CellIndex, scale: f64| -> CoarseClassification {
         if usize::from(cell.resolution()) < HANDOFF_RES {
-            return if cell_bbox(cell, CHILD_BBOX_SCALE).overlaps(&poly_bbox) {
+            return if cell_bbox(cell, scale).overlaps(&poly_bbox) {
                 CoarseClassification::Straddle
             } else {
                 CoarseClassification::Outside
             };
         }
-        let disk = cell_disk(cell, margin, &coord_map);
-        if polygon_index.nearest_distance(disk.centre) <= disk.radius {
-            // The shortest distance between the Polygon Boundary and the Disk Centre is less than the Disk's Radius
-            // Hence the Disk and Polygon Boundary Cross
+
+        let (min, max) = coord_map.cell_aabb(cell, scale);
+        if polygon_index.any_edge_in_aabb(min, max) {
+            // Edge lies within the Cell's BBox → boundary crosses the cell.
             CoarseClassification::Straddle
         } else {
-            // Disk is wholly inside the or wholly outside the Polygon, use Point-in-Polygon to classify.
-            if polygon_index.contains_point(disk.centre) {
+            // No Edge touches the BBox -> cell wholly inside or wholly outside.
+            //
+            // Use Point-in-Polygon for final Classification
+            if polygon_index.contains_point(coord_map.cellindex_centroid_point(cell)) {
                 CoarseClassification::Inside
             } else {
                 CoarseClassification::Outside

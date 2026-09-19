@@ -1,7 +1,7 @@
 use h3o::{CellIndex, Resolution};
 
 use crate::CoarseClassification;
-use crate::disk::{COARSE_DISK_MARGIN, TARGETRESOLUTION_DISK_MARGIN};
+use crate::coarse::{COARSE_SCALE, TARGET_SCALE};
 
 /// Descended provides the outcome of descending into a Cell's subtree.
 pub enum Descended {
@@ -31,7 +31,7 @@ pub fn descend_compact(
         // The Cell Bounding Disk need not contain any Children.
         //
         // `classify` is a cheap pre-check
-        let included = match classify(cell, TARGETRESOLUTION_DISK_MARGIN) {
+        let included = match classify(cell, TARGET_SCALE) {
             CoarseClassification::Inside => true,
             CoarseClassification::Outside => false,
             CoarseClassification::Straddle => leaf_included(cell),
@@ -44,7 +44,7 @@ pub fn descend_compact(
     }
 
     // Cheap pre-check
-    match classify(cell, COARSE_DISK_MARGIN) {
+    match classify(cell, COARSE_SCALE) {
         CoarseClassification::Inside => return Descended::Included(cell),
         CoarseClassification::Outside => return Descended::Pruned,
         CoarseClassification::Straddle => {} // no-op
@@ -93,7 +93,7 @@ pub fn descend(
         // The Cell Bounding Disk need not contain any Children.
         //
         // `classify` is a cheap pre-check
-        let included = match classify(cell, TARGETRESOLUTION_DISK_MARGIN) {
+        let included = match classify(cell, TARGET_SCALE) {
             CoarseClassification::Inside => true,
             CoarseClassification::Outside => false,
             CoarseClassification::Straddle => leaf_included(cell),
@@ -104,7 +104,7 @@ pub fn descend(
         return;
     }
 
-    match classify(cell, COARSE_DISK_MARGIN) {
+    match classify(cell, COARSE_SCALE) {
         CoarseClassification::Inside => {
             for c in cell.children(target) {
                 emit(c);

@@ -1,11 +1,5 @@
 use h3o::{CellIndex, LatLng};
 
-/// Scalar on a Cell's lat/lng Bounding Box
-/// Guaranteed to cover ALL of that Cell's Childeren down to the target Resolution.
-///
-/// Note - Taken from H3's `CHILD_SCALE_FACTOR`
-pub const CHILD_BBOX_SCALE: f64 = 1.4;
-
 /// Axis-aligned lat/lng Bounding Box in **raw degrees**
 #[derive(Clone, Copy, Debug)]
 pub struct LlBBox {

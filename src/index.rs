@@ -11,7 +11,7 @@
 
 use geo::{MultiPolygon, Point};
 use rstar::primitives::Line;
-use rstar::{AABB, PointDistance, RTree};
+use rstar::{AABB, RTree};
 
 /// Polygon Edge; `rstar`'s [`Line`]
 /// Provides `RTreeObject` + `PointDistance` (nearest-neighbour distance), plus `from`/`to` for the Ray Cast.
@@ -44,12 +44,15 @@ impl PolygonIndex {
         }
     }
 
-    /// Distance from `point` to the nearest Polygon Edge (`+∞` if empty)
-    pub(crate) fn nearest_distance(&self, point: Point) -> f64 {
-        let q = [point.x(), point.y()];
+    /// Whether any Polygon Edge's Bounding envelope intersects the axis-aligned box`[min, max]`.
+    /// Conservative: an edge whose envelope (not the segment itself) clips the
+    /// box still counts, which only ever yields an extra `Straddle`.
+    pub(crate) fn any_edge_in_aabb(&self, min: [f64; 2], max: [f64; 2]) -> bool {
+        let aabb = AABB::from_corners(min, max);
         self.rtree
-            .nearest_neighbor(&q)
-            .map_or(f64::INFINITY, |edge| edge.distance_2(&q).sqrt())
+            .locate_in_envelope_intersecting(&aabb)
+            .next()
+            .is_some()
     }
 
     /// Whether `point` is inside the Polygon (holes excluded) -
