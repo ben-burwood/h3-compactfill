@@ -5,6 +5,7 @@ use crate::bbox::LlBBox;
 
 pub struct CoordMap {
     transmeridian: bool, // polygon crosses the antimeridian?
+    ref_lng: f64,        // polygon centre longitude
 }
 
 impl CoordMap {
@@ -16,7 +17,27 @@ impl CoordMap {
         // Shape spans >180deg Longitudinally so it crosses antimeridian
         let transmeridian: bool = (bbox.max().x - bbox.min().x) > 180.0;
 
-        return Some(Self { transmeridian });
+        // Reference Longitude - to unwrap every coordinate into a single contiguous frame.
+        let ref_lng = if transmeridian {
+            let west = if bbox.min().x < 0.0 {
+                bbox.min().x + 360.0
+            } else {
+                bbox.min().x
+            };
+            let east = if bbox.max().x < 0.0 {
+                bbox.max().x + 360.0
+            } else {
+                bbox.max().x
+            };
+            (west + east) / 2.0
+        } else {
+            (bbox.min().x + bbox.max().x) / 2.0
+        };
+
+        return Some(Self {
+            transmeridian,
+            ref_lng,
+        });
     }
 
     /// Antimeridian Handing - Shifts negative Longitudes into a continuous [0, 360].
@@ -33,11 +54,28 @@ impl CoordMap {
     // Classification uses axis-aligned bounding boxes and a ray-cast point-in-polygon test,
     // both invariant under a uniform longitude scale, so no `cos(lat0)` compression is needed —
     // only the antimeridian shift, which removes the ±180 seam.
+    //
+    // Every longitude is additionally *unwrapped* to lie within ±180° of the polygon's reference longitude.
+    // This anchors polygon vertices and cell boundaries — including cells that individually
+    // straddle the ±180° seam — into one contiguous frame, so a seam-crossing cell
+    // can no longer collapse into a degenerate globe-spanning polygon.
     fn normalise_coord(&self, lng: f64, lat: f64) -> Coord {
         Coord {
-            x: self.antimeridian_lng(lng),
+            x: self.unwrap_near_ref(self.antimeridian_lng(lng)),
             y: lat,
         }
+    }
+
+    /// Shift `lng` by whole turns of 360° until it lies within (ref-180, ref+180)
+    fn unwrap_near_ref(&self, lng: f64) -> f64 {
+        let mut l = lng;
+        while l - self.ref_lng > 180.0 {
+            l -= 360.0;
+        }
+        while l - self.ref_lng <= -180.0 {
+            l += 360.0;
+        }
+        l
     }
 
     /// Cell Centroid as a Point in the normalised frame
@@ -155,21 +193,24 @@ mod tests {
     fn longitude_map_shifts_only_when_transmeridian() {
         assert_eq!(
             CoordMap {
-                transmeridian: false
+                transmeridian: false,
+                ref_lng: 0.0,
             }
             .antimeridian_lng(-179.0),
             -179.0
         );
         assert_eq!(
             CoordMap {
-                transmeridian: true
+                transmeridian: true,
+                ref_lng: 180.0,
             }
             .antimeridian_lng(-179.0),
             181.0
         );
         assert_eq!(
             CoordMap {
-                transmeridian: true
+                transmeridian: true,
+                ref_lng: 180.0,
             }
             .antimeridian_lng(10.0),
             10.0

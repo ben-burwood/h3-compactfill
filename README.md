@@ -10,12 +10,6 @@ To credit up front, this builds upon the great work by Uber in building [H3](htt
 
 Whilst the H3o Tiler implementation is great, this could end up superseeding that implementation as a free sideeffect by just controlling whether or not to short-circuit at coarse cells vs uncompacting to children.
 
-## Outstanding Work
-
-- Fix all lat/lon geometries at the poles and transmeridian
-- Tests
-- Benchmarks
-
 ## Algorithm
 
 The basis of this algorithm is a recursive top-down (descent) search (very similar to Uber's H3 `polygonToCellsExperimental` Function). Where this deviates from `polygonToCellsExperimental` is that it can short-circuit at coarse cells to produce the compact output.
