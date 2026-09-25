@@ -9,8 +9,6 @@ mod coarse;
 use crate::coarse::{CoarseClassification, HANDOFF_RES};
 mod descend;
 use crate::descend::{Descended, descend, descend_compact};
-mod compact_multiresolution;
-use crate::compact_multiresolution::compact_multiresolution;
 mod index;
 use crate::index::PolygonIndex;
 mod tiler;
@@ -108,16 +106,14 @@ pub fn compact_fill(
             }
         }
         FillKind::Compact => {
-            let mut roots = Vec::new();
             for root in CellIndex::base_cells() {
                 match descend_compact(root, resolution, &classify, &leaf_included, &mut |c| {
                     out.push(c)
                 }) {
-                    Descended::Included(root) => roots.push(root),
+                    Descended::Included(root) => out.push(root),
                     Descended::Pruned => {}
                 }
             }
-            out.extend(compact_multiresolution(roots));
         }
     }
     out
