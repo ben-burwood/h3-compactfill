@@ -102,7 +102,8 @@ impl CoordMap {
             f64::NEG_INFINITY,
             f64::NEG_INFINITY,
         );
-        for c in self.cellindex_boundary_ring(cell) {
+        for ll in cell.boundary().iter() {
+            let c = self.normalise_coord(ll.lng(), ll.lat());
             min_x = min_x.min(c.x);
             min_y = min_y.min(c.y);
             max_x = max_x.max(c.x);

@@ -1,4 +1,4 @@
-//! Direct timing + peak-memory benchmark for `compact_fill` (no criterion).
+//! Direct timing + memory benchmark for `compact_fill` (no criterion).
 //!
 //! Runs a moderate matrix of polygon size × resolution over four runners:
 //!   - `compact_fill` Compact  — this crate, short-circuiting at coarse cells,
@@ -6,16 +6,21 @@
 //!   - h3o Tiler Full          — the reference polyfill (`polygonToCells`),
 //!   - h3o Tiler + compact     — the naive two-stage baseline (polyfill then
 //!                               `CellIndex::compact`) that this crate replaces.
-//! Each is timed with `std::time::Instant` and its peak heap is reported via
-//! `peak_alloc`, so this crate can be compared head-to-head against both h3o
-//! pipelines on time and memory (Full vs Tiler-Full; Compact vs Tiler-compact).
+//! Each is timed with `std::time::Instant`, and a custom global allocator reports
+//! two memory figures so this crate can be compared head-to-head against both h3o
+//! pipelines (Full vs Tiler-Full; Compact vs Tiler-compact):
+//!   - `peak MB`  — high-water live bytes (what the process must hold at once),
+//!   - `alloc MB` — cumulative bytes requested (allocation churn); a hot path of
+//!                  small transient buffers can keep peak low while alloc is huge.
 //!
 //! Regression workflow:
 //!   1. On `main`, before the change:  `cargo bench --bench fill`  → save the table.
-//!   2. After the `BASE_CELL_DESCENT` change: re-run and diff time + peak MB.
+//!   2. After the change: re-run and diff time + peak MB + alloc MB.
 //!
 //! Note: `harness = false` in Cargo.toml — this is a plain `main`, not libtest.
 
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::{Duration, Instant};
 
 use geo::{Coord, LineString, MultiPolygon, Polygon};
@@ -26,10 +31,58 @@ use h3o::{
 
 use h3_compactfill::{FillKind, compact_fill};
 
-use peak_alloc::PeakAlloc;
+/// Allocator that both peaks (max live bytes) and *totals* (cumulative bytes
+/// requested). Peak reflects the high-water live set; total reflects allocation
+/// churn — many small transient buffers can keep peak low while total is huge.
+///
+/// `realloc` is intentionally left as the `GlobalAlloc` default (alloc + copy +
+/// dealloc through these same methods) so a `Vec` growing by doubling is counted
+/// the way the program actually allocates.
+struct TrackingAlloc;
+
+static TOTAL_BYTES: AtomicUsize = AtomicUsize::new(0);
+static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
+static PEAK_BYTES: AtomicUsize = AtomicUsize::new(0);
+
+unsafe impl GlobalAlloc for TrackingAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ptr = unsafe { System.alloc(layout) };
+        if !ptr.is_null() {
+            let size = layout.size();
+            TOTAL_BYTES.fetch_add(size, Relaxed);
+            let live = LIVE_BYTES.fetch_add(size, Relaxed) + size;
+            PEAK_BYTES.fetch_max(live, Relaxed);
+        }
+        ptr
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) };
+        LIVE_BYTES.fetch_sub(layout.size(), Relaxed);
+    }
+}
 
 #[global_allocator]
-static PEAK: PeakAlloc = PeakAlloc;
+static ALLOC: TrackingAlloc = TrackingAlloc;
+
+const MB: f64 = 1024.0 * 1024.0;
+
+/// Zero the total counter and set peak to the current live set, so the next
+/// measured region reports only its own allocations.
+fn reset_stats() {
+    TOTAL_BYTES.store(0, Relaxed);
+    PEAK_BYTES.store(LIVE_BYTES.load(Relaxed), Relaxed);
+}
+
+/// Cumulative bytes requested since the last `reset_stats`, in MB.
+fn total_mb() -> f64 {
+    TOTAL_BYTES.load(Relaxed) as f64 / MB
+}
+
+/// High-water live bytes since the last `reset_stats`, in MB.
+fn peak_mb() -> f64 {
+    PEAK_BYTES.load(Relaxed) as f64 / MB
+}
 
 /// Timed iterations per variant (min + mean are reported).
 const ITERS: u32 = 5;
@@ -116,18 +169,22 @@ fn shapes() -> Vec<(&'static str, MultiPolygon, Resolution)> {
 
 fn main() {
     println!(
-        "{:<8} {:<11} {:<5} {:>10} {:>10} {:>10} {:>10}",
-        "shape", "kind", "res", "cells", "min ms", "mean ms", "peak MB"
+        "{:<8} {:<11} {:<5} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "shape", "kind", "res", "cells", "min ms", "mean ms", "peak MB", "alloc MB"
     );
-    println!("{}", "-".repeat(69));
+    println!("{}", "-".repeat(80));
 
     for (name, poly, resolution) in shapes() {
         for runner in RUNNERS {
-            // Measure output size + peak heap on a clean run.
-            PEAK.reset_peak_usage();
-            let out = runner.run(poly.clone(), resolution);
+            // Measure output size + peak/total heap on a clean run.
+            // The input clone is done before resetting so only the runner's own
+            // allocations are counted.
+            let input = poly.clone();
+            reset_stats();
+            let out = runner.run(input, resolution);
             let cells = out.len();
-            let peak_mb = PEAK.peak_usage() as f64 / (1024.0 * 1024.0);
+            let peak_mb = peak_mb();
+            let alloc_mb = total_mb();
             drop(out);
 
             // Time ITERS runs; the input clone is outside the timed region.
@@ -145,7 +202,7 @@ fn main() {
             let mean = total / ITERS;
 
             println!(
-                "{:<8} {:<11} {:<5} {:>10} {:>10.2} {:>10.2} {:>10.2}",
+                "{:<8} {:<11} {:<5} {:>10} {:>10.2} {:>10.2} {:>10.2} {:>10.2}",
                 name,
                 runner.label(),
                 u8::from(resolution),
@@ -153,6 +210,7 @@ fn main() {
                 min.as_secs_f64() * 1e3,
                 mean.as_secs_f64() * 1e3,
                 peak_mb,
+                alloc_mb,
             );
         }
         println!();

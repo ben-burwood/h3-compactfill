@@ -50,7 +50,7 @@ fn lng_overlap(a_west: f64, a_east: f64, b_west: f64, b_east: f64) -> bool {
 /// Handles per-cell antimeridian wrap and the (degenerate) polar cells.
 pub fn cell_bbox(cell: CellIndex, scale: f64) -> LlBBox {
     let res = cell.resolution();
-    let boundary: Vec<LatLng> = cell.boundary().iter().copied().collect();
+    let boundary = cell.boundary();
 
     // Polar cells are degenerate in lat/lng (the pole is present at all longitudes).
     let north_pole = LatLng::new(90.0, 0.0)
@@ -112,7 +112,7 @@ pub fn cell_bbox(cell: CellIndex, scale: f64) -> LlBBox {
         // then re-encode into [-180, 180] (which yields east < west).
         let mut lo = f64::INFINITY;
         let mut hi = f64::NEG_INFINITY;
-        for v in &boundary {
+        for v in boundary.iter() {
             let l = if v.lng() < 0.0 {
                 v.lng() + 360.0
             } else {

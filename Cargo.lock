@@ -202,11 +202,10 @@ dependencies = [
 
 [[package]]
 name = "h3-compactfill"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "geo",
  "h3o",
- "peak_alloc",
  "rstar",
 ]
 
@@ -350,12 +349,6 @@ checksum = "8c7c9e0d9b23589f26070720bac724174bfec1083e82f7854cdd0267518343c0"
 dependencies = [
  "num-traits",
 ]
-
-[[package]]
-name = "peak_alloc"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccc90935a8dd139fdf341762773687a1e361d3f54b396a55d9dd1f7001e484bb"
 
 [[package]]
 name = "proc-macro2"
