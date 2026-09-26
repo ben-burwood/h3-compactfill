@@ -24,6 +24,8 @@ pub(crate) struct PolygonIndex {
     rtree: RTree<Edge>,
     /// Right Edge of the Geometry, so a ray cast can stop at a finite x
     max_x: f64,
+    bbox_min: [f64; 2],
+    bbox_max: [f64; 2],
 }
 
 impl PolygonIndex {
@@ -33,6 +35,7 @@ impl PolygonIndex {
     pub(crate) fn build(polygons: &MultiPolygon, coord_map: &CoordMap) -> Self {
         let mut edges = Vec::new();
         let mut max_x = f64::NEG_INFINITY;
+        let (mut min_x, mut min_y, mut max_y) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY);
         for polygon in polygons {
             for ring in std::iter::once(polygon.exterior()).chain(polygon.interiors()) {
                 for line in ring.lines() {
@@ -41,6 +44,9 @@ impl PolygonIndex {
                     let a = [start.x, start.y];
                     let b = [end.x, end.y];
                     max_x = max_x.max(a[0]).max(b[0]);
+                    min_x = min_x.min(a[0]).min(b[0]);
+                    min_y = min_y.min(a[1]).min(b[1]);
+                    max_y = max_y.max(a[1]).max(b[1]);
                     edges.push(Line::new(a, b));
                 }
             }
@@ -48,7 +54,17 @@ impl PolygonIndex {
         Self {
             rtree: RTree::bulk_load(edges),
             max_x,
+            bbox_min: [min_x, min_y],
+            bbox_max: [max_x, max_y],
         }
+    }
+
+    /// Whether the box `[min, max]` is disjoint from the whole Geometry's Bounds - CHEAP
+    pub(crate) fn aabb_outside_bounds(&self, min: [f64; 2], max: [f64; 2]) -> bool {
+        max[0] < self.bbox_min[0]
+            || min[0] > self.bbox_max[0]
+            || max[1] < self.bbox_min[1]
+            || min[1] > self.bbox_max[1]
     }
 
     /// Whether any Polygon Edge's Bounding envelope intersects the axis-aligned box`[min, max]`.

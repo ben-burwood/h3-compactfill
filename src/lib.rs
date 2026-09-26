@@ -60,6 +60,12 @@ pub fn compact_fill(
         }
 
         let (min, max) = coord_map.cell_aabb(cell, scale);
+
+        // Initial Cheap pre-check of BBox vs Polygon Bounds
+        if polygon_index.aabb_outside_bounds(min, max) {
+            return CoarseClassification::Outside;
+        }
+
         if polygon_index.any_edge_in_aabb(min, max) {
             // Edge lies within the Cell's BBox → boundary crosses the cell.
             CoarseClassification::Straddle
