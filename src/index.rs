@@ -13,6 +13,8 @@ use geo::{MultiPolygon, Point};
 use rstar::primitives::Line;
 use rstar::{AABB, RTree};
 
+use crate::map::CoordMap;
+
 /// Polygon Edge; `rstar`'s [`Line`]
 /// Provides `RTreeObject` (envelope for the AABB query), plus `from`/`to` for the Ray Cast.
 type Edge = Line<[f64; 2]>;
@@ -25,14 +27,19 @@ pub(crate) struct PolygonIndex {
 }
 
 impl PolygonIndex {
-    pub(crate) fn build(polygons: &MultiPolygon) -> Self {
+    /// Flattens `polygons` to an edge list, normalising each vertex into the
+    /// seam-free frame as it goes — so the caller need not materialise a whole
+    /// second, normalised [`MultiPolygon`] just to feed the R-tree.
+    pub(crate) fn build(polygons: &MultiPolygon, coord_map: &CoordMap) -> Self {
         let mut edges = Vec::new();
         let mut max_x = f64::NEG_INFINITY;
         for polygon in polygons {
             for ring in std::iter::once(polygon.exterior()).chain(polygon.interiors()) {
                 for line in ring.lines() {
-                    let a = [line.start.x, line.start.y];
-                    let b = [line.end.x, line.end.y];
+                    let start = coord_map.normalise_coord(line.start.x, line.start.y);
+                    let end = coord_map.normalise_coord(line.end.x, line.end.y);
+                    let a = [start.x, start.y];
+                    let b = [end.x, end.y];
                     max_x = max_x.max(a[0]).max(b[0]);
                     edges.push(Line::new(a, b));
                 }

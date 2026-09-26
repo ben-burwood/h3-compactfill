@@ -59,7 +59,7 @@ impl CoordMap {
     // This anchors polygon vertices and cell boundaries — including cells that individually
     // straddle the ±180° seam — into one contiguous frame, so a seam-crossing cell
     // can no longer collapse into a degenerate globe-spanning polygon.
-    fn normalise_coord(&self, lng: f64, lat: f64) -> Coord {
+    pub(crate) fn normalise_coord(&self, lng: f64, lat: f64) -> Coord {
         Coord {
             x: self.unwrap_near_ref(self.antimeridian_lng(lng)),
             y: lat,

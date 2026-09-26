@@ -33,10 +33,15 @@ pub fn compact_fill(
 
     let poly_bbox = coord_map.polygon_ll_bbox(&polygons);
 
-    let normalised_polygons = coord_map.normalise_polygons(polygons);
+    // Polygon Index handles Coordinate Normalisation to the coord_map
+    let polygon_index = PolygonIndex::build(&polygons, &coord_map);
 
-    let prepared_geometry = PreparedGeometry::from(&normalised_polygons);
-    let polygon_index = PolygonIndex::build(&normalised_polygons);
+    // Only non-centroid modes need an exact DE-9IM relate.
+    // Centroid mode is point-in-polygon, served by the edge R-tree.
+    let prepared_geometry = match mode {
+        ContainmentMode::ContainsCentroid => None,
+        _ => Some(PreparedGeometry::from(coord_map.normalise_polygons(polygons))),
+    };
 
     // Containment Tests - the coarse `classify` test is quicker than the `leaf_included` (relate or pip) Test.
     //
@@ -73,15 +78,12 @@ pub fn compact_fill(
     // Leaf (Target Resolution) Containment Test
     // Define a closure over the preparedGeometry
     let leaf_included = |cell: CellIndex| -> bool {
-        match mode {
-            // Centroid Mode is just Point-in-Polygon
-            ContainmentMode::ContainsCentroid => {
-                let centre = &coord_map.cellindex_centroid_point(cell);
-                prepared_geometry.relate(centre).is_contains()
-            }
+        match &prepared_geometry {
+            // Centroid Mode is Point-in-Polygon, served by the edge R-tree.
+            None => polygon_index.contains_point(coord_map.cellindex_centroid_point(cell)),
             // Other ContainmentModes need the Cell's exact DE-9IM against the Polygon
-            _ => {
-                let im = prepared_geometry.relate(&cell_polygon(cell, &coord_map));
+            Some(prepared) => {
+                let im = prepared.relate(&cell_polygon(cell, &coord_map));
                 match mode {
                     // ContainsBoundary must be Fully Contained
                     ContainmentMode::ContainsBoundary => im.is_covers(),
