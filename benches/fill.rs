@@ -86,8 +86,24 @@ fn peak_mb() -> f64 {
 
 /// Timed iterations per variant (min + mean are reported).
 const ITERS: u32 = 5;
-/// Containment mode used across the matrix (kept fixed so runs are comparable).
-const MODE: ContainmentMode = ContainmentMode::Covers;
+
+/// Containment mode for the whole matrix, selected at runtime so a single build
+/// can be swept across modes. Pick it with a positional arg after `--`:
+///   `cargo bench --bench fill -- centroid`
+/// Accepts `centroid`, `boundary`, `intersects`, `covers` (default `covers`).
+/// Kept fixed across the matrix so all rows in one run stay comparable.
+fn parse_mode(arg: Option<&str>) -> ContainmentMode {
+    match arg.map(str::to_ascii_lowercase).as_deref() {
+        Some("centroid") | Some("contains_centroid") => ContainmentMode::ContainsCentroid,
+        Some("boundary") | Some("contains_boundary") => ContainmentMode::ContainsBoundary,
+        Some("intersects") | Some("intersects_boundary") => ContainmentMode::IntersectsBoundary,
+        Some("covers") | None => ContainmentMode::Covers,
+        Some(other) => panic!(
+            "unknown containment mode {other:?}; expected one of: \
+             centroid, boundary, intersects, covers"
+        ),
+    }
+}
 
 /// Axis-aligned rectangle as a single-polygon `MultiPolygon` (`x = lng`, `y = lat`).
 fn rect(min_lng: f64, min_lat: f64, max_lng: f64, max_lat: f64) -> MultiPolygon {
@@ -147,13 +163,18 @@ impl Runner {
 
     /// Run once and return the produced cells (owned, so the allocation counts
     /// toward peak-memory measurement).
-    fn run(self, poly: MultiPolygon, resolution: Resolution) -> Vec<CellIndex> {
+    fn run(
+        self,
+        poly: MultiPolygon,
+        resolution: Resolution,
+        mode: ContainmentMode,
+    ) -> Vec<CellIndex> {
         match self {
-            Runner::Compact => compact_fill(poly, resolution, MODE, FillKind::Compact),
-            Runner::Full => compact_fill(poly, resolution, MODE, FillKind::Full),
-            Runner::TilerFull => tiler_coverage(poly, resolution),
+            Runner::Compact => compact_fill(poly, resolution, mode, FillKind::Compact),
+            Runner::Full => compact_fill(poly, resolution, mode, FillKind::Full),
+            Runner::TilerFull => tiler_coverage(poly, resolution, mode),
             Runner::TilerCompact => {
-                let mut cells = tiler_coverage(poly, resolution);
+                let mut cells = tiler_coverage(poly, resolution, mode);
                 CellIndex::compact(&mut cells).expect("tiler coverage should compact");
                 cells
             }
@@ -162,8 +183,12 @@ impl Runner {
 }
 
 /// h3o's `polygonToCells` coverage at the target resolution.
-fn tiler_coverage(poly: MultiPolygon, resolution: Resolution) -> Vec<CellIndex> {
-    let mut tiler = TilerBuilder::new(resolution).containment_mode(MODE).build();
+fn tiler_coverage(
+    poly: MultiPolygon,
+    resolution: Resolution,
+    mode: ContainmentMode,
+) -> Vec<CellIndex> {
+    let mut tiler = TilerBuilder::new(resolution).containment_mode(mode).build();
     tiler.add_batch(poly).expect("input geometry should be valid");
     tiler.into_coverage().collect()
 }
@@ -195,6 +220,12 @@ fn shapes() -> Vec<(&'static str, MultiPolygon, Resolution)> {
 }
 
 fn main() {
+    // First positional arg after `--` picks the containment mode (default covers).
+    // Skip the program name and any cargo-injected flags (e.g. `--bench`).
+    let mode_arg = std::env::args().skip(1).find(|a| !a.starts_with('-'));
+    let mode = parse_mode(mode_arg.as_deref());
+
+    println!("containment mode: {mode:?}");
     println!(
         "{:<8} {:<11} {:<5} {:>10} {:>10} {:>10} {:>10} {:>10}",
         "shape", "kind", "res", "cells", "min ms", "mean ms", "peak MB", "alloc MB"
@@ -208,7 +239,7 @@ fn main() {
             // allocations are counted.
             let input = poly.clone();
             reset_stats();
-            let out = runner.run(input, resolution);
+            let out = runner.run(input, resolution, mode);
             let cells = out.len();
             let peak_mb = peak_mb();
             let alloc_mb = total_mb();
@@ -220,7 +251,7 @@ fn main() {
             for _ in 0..ITERS {
                 let p = poly.clone();
                 let start = Instant::now();
-                let out = runner.run(p, resolution);
+                let out = runner.run(p, resolution, mode);
                 let elapsed = start.elapsed();
                 std::hint::black_box(&out);
                 min = min.min(elapsed);
