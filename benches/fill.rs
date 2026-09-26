@@ -200,6 +200,14 @@ const RUNNERS: [Runner; 4] = [
     Runner::TilerCompact,
 ];
 
+impl Runner {
+    /// Whether this runner exercises an h3o reference implementation (the two
+    /// Tiler baselines), as opposed to this crate's own `compact_fill`.
+    fn is_h3o(self) -> bool {
+        matches!(self, Runner::TilerFull | Runner::TilerCompact)
+    }
+}
+
 /// A moderate-but-hard matrix targeting large cell counts per variant.
 fn shapes() -> Vec<(&'static str, MultiPolygon, Resolution)> {
     vec![
@@ -225,7 +233,19 @@ fn main() {
     let mode_arg = std::env::args().skip(1).find(|a| !a.starts_with('-'));
     let mode = parse_mode(mode_arg.as_deref());
 
+    // `--no-h3o` (alias `--skip-h3o`) drops the two h3o Tiler baselines, leaving
+    // only this crate's `compact_fill` rows:
+    //   `cargo bench --bench fill -- --no-h3o`
+    let skip_h3o = std::env::args().any(|a| a == "--no-h3o" || a == "--skip-h3o");
+    let runners: Vec<Runner> = RUNNERS
+        .into_iter()
+        .filter(|r| !(skip_h3o && r.is_h3o()))
+        .collect();
+
     println!("containment mode: {mode:?}");
+    if skip_h3o {
+        println!("(skipping h3o Tiler baselines)");
+    }
     println!(
         "{:<8} {:<11} {:<5} {:>10} {:>10} {:>10} {:>10} {:>10}",
         "shape", "kind", "res", "cells", "min ms", "mean ms", "peak MB", "alloc MB"
@@ -233,7 +253,7 @@ fn main() {
     println!("{}", "-".repeat(80));
 
     for (name, poly, resolution) in shapes() {
-        for runner in RUNNERS {
+        for &runner in &runners {
             // Measure output size + peak/total heap on a clean run.
             // The input clone is done before resetting so only the runner's own
             // allocations are counted.
