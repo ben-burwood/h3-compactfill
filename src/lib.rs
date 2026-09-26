@@ -82,28 +82,30 @@ pub fn compact_fill(
     };
 
     // Leaf (Target Resolution) Containment Test
-    //
-    // Centroid mode is a single point-in-polygon query, so it skips the coarse `classify` pre-check
-    // Other Containment Modes have a pre-check to dodge the expensive DE-9IM `relate` on non-straddling leaves.
     let leaf_test = |cell: CellIndex| -> bool {
-        match &prepared_geometry {
-            // Centroid Mode is Point-in-Polygon, served by the edge R-tree.
-            None => polygon_index.contains_point(coord_map.cellindex_centroid_point(cell)),
-            // Other ContainmentModes need the Cell's exact DE-9IM against the Polygon
-            // `classify` is a Cheap Pre-Check as only staddling Cells need the `relate`
-            Some(prepared) => match classify(cell, TARGET_SCALE) {
-                CoarseClassification::Inside => true,
-                CoarseClassification::Outside => false,
-                CoarseClassification::Straddle => {
-                    let im = prepared.relate(&cell_polygon(cell, &coord_map));
-                    match mode {
-                        // ContainsBoundary must be Fully Contained
-                        ContainmentMode::ContainsBoundary => im.is_covers(),
-                        // IntersectsBoundary/Covers just need Intersect
-                        _ => im.is_intersects(),
-                    }
+        let centroid_in = |cell: CellIndex| polygon_index.contains_point(coord_map.cellindex_centroid_point(cell));
+
+        // Centroid Mode (i.e. no prepared_geometry) is Point-in-Polygon, served by the edge R-tree
+        let Some(prepared) = &prepared_geometry else {
+            return centroid_in(cell);
+        };
+
+        // `classify` is a Cheap Pre-Check as only straddling Cells need the DE-9IM `relate`
+        match classify(cell, TARGET_SCALE) {
+            CoarseClassification::Inside => true,
+            CoarseClassification::Outside => false,
+            CoarseClassification::Straddle => {
+                let relate = || prepared.relate(&cell_polygon(cell, &coord_map));
+
+                match mode {
+                    // ContainsBoundary: must contain centroid so cheap centroid pre-check first
+                    ContainmentMode::ContainsBoundary if !centroid_in(cell) => false,
+                    ContainmentMode::ContainsBoundary => relate().is_covers(),
+                    // Intersect modes: centroid inside ⇒ shared point ⇒ include.
+                    _ if centroid_in(cell) => true,
+                    _ => relate().is_intersects(),
                 }
-            },
+            }
         }
     };
 
