@@ -1,7 +1,7 @@
 use h3o::{CellIndex, Resolution};
 
 use crate::CoarseClassification;
-use crate::coarse::{COARSE_SCALE, TARGET_SCALE};
+use crate::coarse::COARSE_SCALE;
 
 /// Descended provides the outcome of descending into a Cell's subtree.
 pub enum Descended {
@@ -22,19 +22,11 @@ pub fn descend_compact(
     cell: CellIndex,
     target: Resolution,
     classify: &impl Fn(CellIndex, f64) -> CoarseClassification,
-    leaf_included: &impl Fn(CellIndex) -> bool,
+    leaf_test: &impl Fn(CellIndex) -> bool,
     emit: &mut impl FnMut(CellIndex),
 ) -> Descended {
     if cell.resolution() == target {
-        // Leaf (Target Resolution)
-        //
-        // `classify` is a cheap pre-check
-        let included = match classify(cell, TARGET_SCALE) {
-            CoarseClassification::Inside => true,
-            CoarseClassification::Outside => false,
-            CoarseClassification::Straddle => leaf_included(cell),
-        };
-        return if included {
+        return if leaf_test(cell) {
             Descended::Included(cell)
         } else {
             Descended::Pruned
@@ -55,7 +47,7 @@ pub fn descend_compact(
     let mut n = 0usize;
     let mut all = true;
     for child in cell.children(next) {
-        match descend_compact(child, target, classify, leaf_included, emit) {
+        match descend_compact(child, target, classify, leaf_test, emit) {
             Descended::Included(c) => {
                 clean[n] = c;
                 n += 1;
@@ -82,19 +74,11 @@ pub fn descend(
     cell: CellIndex,
     target: Resolution,
     classify: &impl Fn(CellIndex, f64) -> CoarseClassification,
-    leaf_included: &impl Fn(CellIndex) -> bool,
+    leaf_test: &impl Fn(CellIndex) -> bool,
     emit: &mut impl FnMut(CellIndex),
 ) {
     if cell.resolution() == target {
-        // Leaf (Target Resolution)
-        //
-        // `classify` is a cheap pre-check
-        let included = match classify(cell, TARGET_SCALE) {
-            CoarseClassification::Inside => true,
-            CoarseClassification::Outside => false,
-            CoarseClassification::Straddle => leaf_included(cell),
-        };
-        if included {
+        if leaf_test(cell) {
             emit(cell);
         }
         return;
@@ -110,7 +94,7 @@ pub fn descend(
         CoarseClassification::Straddle => {
             let next = cell.resolution().succ().unwrap_or(target);
             for child in cell.children(next) {
-                descend(child, target, classify, leaf_included, emit);
+                descend(child, target, classify, leaf_test, emit);
             }
         }
     }

@@ -6,7 +6,7 @@ use crate::map::CoordMap;
 mod bbox;
 use crate::bbox::cell_bbox;
 mod coarse;
-use crate::coarse::{CoarseClassification, HANDOFF_RES};
+use crate::coarse::{CoarseClassification, HANDOFF_RES, TARGET_SCALE};
 mod descend;
 use crate::descend::{Descended, descend, descend_compact};
 mod index;
@@ -76,21 +76,28 @@ pub fn compact_fill(
     };
 
     // Leaf (Target Resolution) Containment Test
-    // Define a closure over the preparedGeometry
-    let leaf_included = |cell: CellIndex| -> bool {
+    //
+    // Centroid mode is a single point-in-polygon query, so it skips the coarse `classify` pre-check
+    // Other Containment Modes have a pre-check to dodge the expensive DE-9IM `relate` on non-straddling leaves.
+    let leaf_test = |cell: CellIndex| -> bool {
         match &prepared_geometry {
             // Centroid Mode is Point-in-Polygon, served by the edge R-tree.
             None => polygon_index.contains_point(coord_map.cellindex_centroid_point(cell)),
             // Other ContainmentModes need the Cell's exact DE-9IM against the Polygon
-            Some(prepared) => {
-                let im = prepared.relate(&cell_polygon(cell, &coord_map));
-                match mode {
-                    // ContainsBoundary must be Fully Contained
-                    ContainmentMode::ContainsBoundary => im.is_covers(),
-                    // IntersectsBoundary/Covers just need Intersect
-                    _ => im.is_intersects(),
+            // `classify` is a Cheap Pre-Check as only staddling Cells need the `relate`
+            Some(prepared) => match classify(cell, TARGET_SCALE) {
+                CoarseClassification::Inside => true,
+                CoarseClassification::Outside => false,
+                CoarseClassification::Straddle => {
+                    let im = prepared.relate(&cell_polygon(cell, &coord_map));
+                    match mode {
+                        // ContainsBoundary must be Fully Contained
+                        ContainmentMode::ContainsBoundary => im.is_covers(),
+                        // IntersectsBoundary/Covers just need Intersect
+                        _ => im.is_intersects(),
+                    }
                 }
-            }
+            },
         }
     };
 
@@ -102,14 +109,14 @@ pub fn compact_fill(
     match kind {
         FillKind::Full => {
             for root in CellIndex::base_cells() {
-                descend(root, resolution, &classify, &leaf_included, &mut |c| {
+                descend(root, resolution, &classify, &leaf_test, &mut |c| {
                     out.push(c)
                 });
             }
         }
         FillKind::Compact => {
             for root in CellIndex::base_cells() {
-                match descend_compact(root, resolution, &classify, &leaf_included, &mut |c| {
+                match descend_compact(root, resolution, &classify, &leaf_test, &mut |c| {
                     out.push(c)
                 }) {
                     Descended::Included(root) => out.push(root),
