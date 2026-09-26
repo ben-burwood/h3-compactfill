@@ -101,6 +101,26 @@ fn rect(min_lng: f64, min_lat: f64, max_lng: f64, max_lat: f64) -> MultiPolygon 
     MultiPolygon::new(vec![Polygon::new(ring, Vec::new())])
 }
 
+/// A `segments`-sided regular polygon approximating a circle centred at
+/// (`c_lng`, `c_lat`) with radius `radius_deg` degrees. Used to stress the
+/// edge R-tree: unlike a rectangle (4 edges), this produces thousands of edges,
+/// so `any_edge_in_aabb` / `contains_point` queries do real `O(log edges)` work
+/// and every boundary cell relates against a many-vertex ring.
+fn circle(c_lng: f64, c_lat: f64, radius_deg: f64, segments: usize) -> MultiPolygon {
+    let mut coords = Vec::with_capacity(segments + 1);
+    for i in 0..segments {
+        // CCW so the ring is a valid exterior (positive orientation).
+        let theta = 2.0 * std::f64::consts::PI * (i as f64) / (segments as f64);
+        // Divide the lng offset by cos(lat) so the shape stays visually round;
+        // exact roundness is irrelevant to the benchmark, edge count is the point.
+        let lat = c_lat + radius_deg * theta.sin();
+        let lng = c_lng + radius_deg * theta.cos() / c_lat.to_radians().cos();
+        coords.push(Coord { x: lng, y: lat });
+    }
+    coords.push(coords[0]); // close the ring
+    MultiPolygon::new(vec![Polygon::new(LineString::new(coords), Vec::new())])
+}
+
 /// The four implementations timed side by side.
 #[derive(Clone, Copy)]
 enum Runner {
@@ -164,6 +184,13 @@ fn shapes() -> Vec<(&'static str, MultiPolygon, Resolution)> {
         ("medium", rect(-4.0, 50.0, 4.0, 56.0), Resolution::Nine),
         // sub-continent scale, coarse resolution
         ("large", rect(-20.0, 30.0, 20.0, 55.0), Resolution::Eight),
+        // High-edge-count boundary: a ~4k-vertex circle. Stresses the edge
+        // R-tree (query cost) and the per-straddle-leaf `relate` against a
+        // many-vertex ring, rather than the 4-edge rectangle path above.
+        ("circle-4k", circle(2.0, 52.0, 1.0, 4000), Resolution::Nine),
+        // Same shape, finer resolution: many more straddling boundary cells,
+        // each relating against the full ring.
+        ("circle-8k", circle(0.0, 50.0, 0.5, 8000), Resolution::Ten),
     ]
 }
 
