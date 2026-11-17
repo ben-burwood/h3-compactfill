@@ -68,12 +68,11 @@ impl PolygonIndex {
     }
 
     /// Whether any Polygon Edge's Bounding envelope intersects the axis-aligned box`[min, max]`.
-    /// Conservative: an edge whose envelope (not the segment itself) clips the
-    /// box still counts, which only ever yields an extra `Straddle`.
+    /// Conservative: an edge whose envelope (not the segment itself) clips the box still counts, which only ever yields an extra `Straddle`.
     pub(crate) fn any_edge_in_aabb(&self, min: [f64; 2], max: [f64; 2]) -> bool {
         let aabb = AABB::from_corners(min, max);
         self.rtree
-            .locate_in_envelope_intersecting(&aabb)
+            .locate_in_envelope_intersecting(aabb)
             .next()
             .is_some()
     }
@@ -88,7 +87,7 @@ impl PolygonIndex {
         // y-span includes the ray and that lie at or to the right of the point.
         let strip = AABB::from_corners(q, [self.max_x + 1.0, q[1]]);
         let mut inside = false;
-        for edge in self.rtree.locate_in_envelope_intersecting(&strip) {
+        for edge in self.rtree.locate_in_envelope_intersecting(strip) {
             if ray_crosses(q, edge.from, edge.to) {
                 inside = !inside;
             }

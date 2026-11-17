@@ -1,6 +1,6 @@
 [package]
 name = "h3-compactfill"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
 description = "H3 compacted polyfill"
 authors = ["Ben Burwood <ben.burwood@outlook.com>"]
@@ -10,7 +10,7 @@ license-file = "LICENCE"
 
 [dependencies]
 geo = "0.33"
-rstar = "0.12"
+rstar = "0.14"
 h3o = { version = "0.11.0", features = ["geo"] }
 
 [[bench]]

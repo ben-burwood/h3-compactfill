@@ -1,14 +1,10 @@
 # H3 CompactFill
 
-This Library provides an early Algorithm for H3 pre-compacted polyfill.
+This Library provides an Algorithm for H3 pre-compacted polyfill.
 
 The benefit of this algorithm is to bypass a 2-stage approach of polyfill + compact which is rather in-efficient as it requires materialising many more fine-resolution interior H3 Cells than are required in the final output.
 
 To credit up front, this builds upon the great work by Uber in building [H3](https://h3geo.org/) and the excellent Rust Crate [h3o](https://github.com/HydroniumLabs/h3o) which implements the Core API.
-
-## H3o Tiler
-
-Whilst the H3o Tiler implementation is great, this could end up superseeding that implementation as a free sideeffect by just controlling whether or not to short-circuit at coarse cells vs uncompacting to children.
 
 ## Algorithm
 
@@ -37,3 +33,7 @@ For Leaf Cells (Cells at the target Resolution), the exact Hexagon is used (chil
 | `IntersectsBoundary` / `Covers` | the polygon **intersects** the cell (any overlap) |
 
 Only straddling (Intersecting) Cells are checked with the same DE-9IM `geo::relate` predicate as h3o's `Tiler`.
+
+## H3o Tiler
+
+Whilst the H3o Tiler implementation is great, this could end up superseeding that implementation as a free sideeffect by just controlling whether or not to short-circuit at coarse cells vs uncompacting to children.
